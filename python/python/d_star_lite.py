@@ -9,12 +9,13 @@ UNOCCUPIED = 0
 
 
 class DStarLite:
-    def __init__(self, map: OccupancyGridMap, s_start: (int, int), s_goal: (int, int)):
+    def __init__(self, map: OccupancyGridMap, s_start: (int, int), s_goal: (int, int), view_range=5):
         """
         :param map: the ground truth map of the environment provided by gui
         :param s_start: start location
         :param s_goal: end location
         """
+        self.ground_truth_map = map
         self.new_edges_and_old_costs = None
 
         # algorithm start
@@ -23,15 +24,15 @@ class DStarLite:
         self.s_last = s_start
         self.k_m = 0  # accumulation
         self.U = PriorityQueue()
+        # TODO init it
         self.rhs = np.ones((map.x_dim, map.y_dim)) * np.inf
         self.g = self.rhs.copy()
 
-        self.sensed_map = OccupancyGridMap(x_dim=map.x_dim,
-                                           y_dim=map.y_dim,
-                                           exploration_setting='8N')
+        self.slam_map = map.copy()
 
         self.rhs[self.s_goal] = 0
         self.U.insert(self.s_goal, Priority(heuristic(self.s_start, self.s_goal), 0))
+        self.view_range = view_range
 
     def calculate_key(self, s: (int, int)):
         """
@@ -49,7 +50,7 @@ class DStarLite:
         :param v: to vertex
         :return: euclidean distance to traverse. inf if obstacle in path
         """
-        if not self.sensed_map.is_unoccupied(u) or not self.sensed_map.is_unoccupied(v):
+        if not self.slam_map.is_unoccupied(u) or not self.slam_map.is_unoccupied(v):
             return float('inf')
         else:
             return heuristic(u, v)
@@ -76,7 +77,7 @@ class DStarLite:
             elif self.g[u] > self.rhs[u]:
                 self.g[u] = self.rhs[u]
                 self.U.remove(u)
-                pred = self.sensed_map.succ(vertex=u)
+                pred = self.slam_map.succ(vertex=u)
                 for s in pred:
                     if s != self.s_goal:
                         self.rhs[s] = min(self.rhs[s], self.c(s, u) + self.g[u])
@@ -84,13 +85,13 @@ class DStarLite:
             else:
                 self.g_old = self.g[u]
                 self.g[u] = float('inf')
-                pred = self.sensed_map.succ(vertex=u)
+                pred = self.slam_map.succ(vertex=u)
                 pred.append(u)
                 for s in pred:
                     if self.rhs[s] == self.c(s, u) + self.g_old:
                         if s != self.s_goal:
                             min_s = float('inf')
-                            succ = self.sensed_map.succ(vertex=s)
+                            succ = self.slam_map.succ(vertex=s)
                             for s_ in succ:
                                 temp = self.c(s, s_) + self.g[s_]
                                 if min_s > temp:
@@ -98,14 +99,39 @@ class DStarLite:
                             self.rhs[s] = min_s
                     self.update_vertex(u)
 
-    def rescan(self) -> Vertices:
 
-        new_edges_and_old_costs = self.new_edges_and_old_costs
-        self.new_edges_and_old_costs = None
-        return new_edges_and_old_costs
+    def rescan(self, global_position: (int, int)):
+        def update_changed_edge_costs(local_grid: Dict) -> Vertices:
+            vertices = Vertices()
+            for node, value in local_grid.items():
+                # if obstacle
+                if value == OBSTACLE:
+                    if self.slam_map.is_unoccupied(node):
+                        v = Vertex(pos=node)
+                        succ = self.slam_map.succ(node)
+                        for u in succ:
+                            v.add_edge_with_cost(succ=u, cost=self.c(u, v.pos))
+                        vertices.add_vertex(v)
+                        self.slam_map.set_obstacle(node)
+                else:
+                    # if white cell
+                    if not self.slam_map.is_unoccupied(node):
+                        v = Vertex(pos=node)
+                        succ = self.slam_map.succ(node)
+                        for u in succ:
+                            v.add_edge_with_cost(succ=u, cost=self.c(u, v.pos))
+                        vertices.add_vertex(v)
+                        self.slam_map.remove_obstacle(node)
+            return vertices
+
+        # rescan local area
+        local_observation = self.ground_truth_map.local_observation(global_position=global_position,
+                                                                    view_range=self.view_range)
+        return update_changed_edge_costs(local_grid=local_observation)
 
     def move_and_replan(self, robot_position: (int, int)):
         path = [robot_position]
+        self.new_edges_and_old_costs = self.rescan(robot_position)
         self.s_start = robot_position
         self.s_last = self.s_start
         self.compute_shortest_path()
@@ -113,7 +139,7 @@ class DStarLite:
         while self.s_start != self.s_goal:
             assert (self.rhs[self.s_start] != float('inf')), "There is no known path!"
 
-            succ = self.sensed_map.succ(self.s_start, avoid_obstacles=False)
+            succ = self.slam_map.succ(self.s_start, avoid_obstacles=False)
             min_s = float('inf')
             arg_min = None
             for s_ in succ:
@@ -123,10 +149,12 @@ class DStarLite:
                     arg_min = s_
 
             ### algorithm sometimes gets stuck here for some reason !!! FIX
+            assert arg_min
             self.s_start = arg_min
             path.append(self.s_start)
             # scan graph for changed costs
-            changed_edges_with_old_cost = self.rescan()
+            changed_edges_with_old_cost = self.new_edges_and_old_costs
+            self.new_edges_and_old_costs = None
             #print("len path: {}".format(len(path)))
             # if any edge costs changed
             if changed_edges_with_old_cost:
@@ -146,7 +174,7 @@ class DStarLite:
                         elif self.rhs[u] == c_old + self.g[v]:
                             if u != self.s_goal:
                                 min_s = float('inf')
-                                succ_u = self.sensed_map.succ(vertex=u)
+                                succ_u = self.slam_map.succ(vertex=u)
                                 for s_ in succ_u:
                                     temp = self.c(u, s_) + self.g[s_]
                                     if min_s > temp:

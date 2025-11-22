@@ -63,6 +63,9 @@ class Animation:
                                       y_dim=y_dim,
                                       exploration_setting='8N')
 
+        self.world.set_obstacle((11, 11))
+        self.world.set_obstacle((11, 12))
+        self.world.set_obstacle((11, 13))
         # Set title of screen
         pygame.display.set_caption(title)
 

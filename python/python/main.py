@@ -1,9 +1,13 @@
+import sys
+
+import numpy as np
+
 from gui import Animation
 from d_star_lite import DStarLite
-from grid import OccupancyGridMap, SLAM
 
 OBSTACLE = 255
 UNOCCUPIED = 0
+np.set_printoptions(threshold=sys.maxsize)
 
 if __name__ == '__main__':
 
@@ -45,43 +49,17 @@ if __name__ == '__main__':
                       s_start=start,
                       s_goal=goal)
 
-    # SLAM to detect vertices
-    slam = SLAM(map=new_map,
-                view_range=view_range)
-
     # move and compute path
     path, g, rhs = dstar.move_and_replan(robot_position=new_position)
 
     while not gui.done:
         # update the map
-        # print(path)
         # drive gui
         gui.run_game(path=path)
 
         new_position = gui.current
-        new_observation = gui.observation
-        new_map = gui.world
-
-        """
-        if new_observation is not None:
-            if new_observation["type"] == OBSTACLE:
-                dstar.global_map.set_obstacle(pos=new_observation["pos"])
-            if new_observation["pos"] == UNOCCUPIED:
-                dstar.global_map.remove_obstacle(pos=new_observation["pos"])
-        """
-
-        if new_observation is not None:
-            old_map = new_map
-            slam.set_ground_truth_map(gt_map=new_map)
 
         if new_position != last_position:
             last_position = new_position
 
-            # slam
-            new_edges_and_old_costs, slam_map = slam.rescan(global_position=new_position)
-
-            dstar.new_edges_and_old_costs = new_edges_and_old_costs
-            dstar.sensed_map = slam_map
-
-            # d star
             path, g, rhs = dstar.move_and_replan(robot_position=new_position)

@@ -85,7 +85,7 @@ class OccupancyGridMap:
         """
         (x, y) = vertex
 
-        if self.exploration_setting == '4N':  # change this
+        if self.exploration_setting == '8N':  # change this
             movements = get_movements_4n(x=x, y=y)
         else:
             movements = get_movements_8n(x=x, y=y)
@@ -126,57 +126,11 @@ class OccupancyGridMap:
                  if self.in_bounds((x, y))]
         return {node: UNOCCUPIED if self.is_unoccupied(pos=node) else OBSTACLE for node in nodes}
 
-
-class SLAM:
-    def __init__(self, map: OccupancyGridMap, view_range: int):
-        self.ground_truth_map = map
-        self.slam_map = OccupancyGridMap(x_dim=map.x_dim,
-                                         y_dim=map.y_dim)
-        self.view_range = view_range
-
-    def set_ground_truth_map(self, gt_map: OccupancyGridMap):
-        self.ground_truth_map = gt_map
-
-    def c(self, u: (int, int), v: (int, int)) -> float:
+    def copy(self):
         """
-        calcuclate the cost between nodes
-        :param u: from vertex
-        :param v: to vertex
-        :return: euclidean distance to traverse. inf if obstacle in path
+        Create a deep copy of the OccupancyGridMap instance
+        :return: a deep copy of the OccupancyGridMap instance
         """
-        if not self.slam_map.is_unoccupied(u) or not self.slam_map.is_unoccupied(v):
-            return float('inf')
-        else:
-            return heuristic(u, v)
-
-    def rescan(self, global_position: (int, int)):
-
-        # rescan local area
-        local_observation = self.ground_truth_map.local_observation(global_position=global_position,
-                                                                    view_range=self.view_range)
-
-        vertices = self.update_changed_edge_costs(local_grid=local_observation)
-        return vertices, self.slam_map
-
-    def update_changed_edge_costs(self, local_grid: Dict) -> Vertices:
-        vertices = Vertices()
-        for node, value in local_grid.items():
-            # if obstacle
-            if value == OBSTACLE:
-                if self.slam_map.is_unoccupied(node):
-                    v = Vertex(pos=node)
-                    succ = self.slam_map.succ(node)
-                    for u in succ:
-                        v.add_edge_with_cost(succ=u, cost=self.c(u, v.pos))
-                    vertices.add_vertex(v)
-                    self.slam_map.set_obstacle(node)
-            else:
-                # if white cell
-                if not self.slam_map.is_unoccupied(node):
-                    v = Vertex(pos=node)
-                    succ = self.slam_map.succ(node)
-                    for u in succ:
-                        v.add_edge_with_cost(succ=u, cost=self.c(u, v.pos))
-                    vertices.add_vertex(v)
-                    self.slam_map.remove_obstacle(node)
-        return vertices
+        new_map = OccupancyGridMap(self.x_dim, self.y_dim)
+        new_map.occupancy_grid_map = np.copy(self.occupancy_grid_map)
+        return new_map

@@ -35,7 +35,8 @@ def heuristic(p: (int, int), q: (int, int)) -> float:
     :param q: (x,y)
     :return: manhattan distance
     """
-    return math.sqrt((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)
+    # return math.sqrt((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2)
+    return  math.fabs(p[0] - q[0]) + math.fabs(p[1] - q[1])
 
 
 def get_movements_4n(x: int, y: int) -> List:
