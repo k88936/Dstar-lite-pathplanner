@@ -152,7 +152,7 @@ class DStarLite:
                                     if min_s > temp:
                                         min_s = temp
                                 self.rhs[u] = min_s
-                            self.update_vertex(u)
-            self.compute_shortest_path()
+                        self.update_vertex(u)
+                self.compute_shortest_path()
         print("path found!")
         return path, self.g, self.rhs
