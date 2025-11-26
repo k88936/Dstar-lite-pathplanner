@@ -134,25 +134,30 @@ class DStarLite:
                 self.s_last = self.s_start
 
                 # for all directed edges (u,v) with changed edge costs
+                updated = []
                 vertices = changed_edges_with_old_cost.vertices
                 for vertex in vertices:
                     v = vertex.pos
                     succ_v = vertex.edges_and_c_old
                     for u, c_old in succ_v.items():
-                        c_new = self.c(u, v)
-                        if c_old > c_new:
-                            if u != self.s_goal:
-                                self.rhs[u] = min(self.rhs[u], self.c(u, v) + self.g[v])
-                        elif self.rhs[u] == c_old + self.g[v]:
-                            if u != self.s_goal:
-                                min_s = float('inf')
-                                succ_u = self.sensed_map.succ(vertex=u)
-                                for s_ in succ_u:
-                                    temp = self.c(u, s_) + self.g[s_]
-                                    if min_s > temp:
-                                        min_s = temp
-                                self.rhs[u] = min_s
-                        self.update_vertex(u)
+                        updated.append((u, v, c_old))
+                        updated.append((v, u, c_old))
+
+                for u, v, c_old in updated:
+                    c_new = self.c(u, v)
+                    if c_old > c_new:
+                        if u != self.s_goal:
+                            self.rhs[u] = min(self.rhs[u], self.c(u, v) + self.g[v])
+                    elif self.rhs[u] == c_old + self.g[v]:
+                        if u != self.s_goal:
+                            min_s = float('inf')
+                            succ_u = self.sensed_map.succ(vertex=u)
+                            for s_ in succ_u:
+                                temp = self.c(u, s_) + self.g[s_]
+                                if min_s > temp:
+                                    min_s = temp
+                            self.rhs[u] = min_s
+                    self.update_vertex(u)
                 self.compute_shortest_path()
         print("path found!")
         return path, self.g, self.rhs
